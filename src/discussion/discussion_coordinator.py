@@ -89,6 +89,23 @@ class DiscussionCoordinator:
         # 新增：处理 DISCUSSION_NOTIFY（接收其他节点发言）
         self.transport.register_handler(self.MSG_NOTIFY, self._on_notify)
     
+    async def create_discussion(
+        self,
+        topic: str,
+        participants: List[str],
+        context: str = "",
+        user_id: str = "",
+        max_rounds: Optional[int] = None,
+    ) -> str:
+        """创建讨论 - 兼容 MeshAgent API 的别名"""
+        return await self.create(
+            topic=topic,
+            participants=participants,
+            context=context,
+            user_id=user_id,
+            max_rounds=max_rounds,
+        )
+
     async def create(
         self,
         topic: str,
