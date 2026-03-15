@@ -1,0 +1,28 @@
+# OpenClaw Mesh v0.6.8 依赖
+# Python 3.9+
+
+# 异步 SQLite
+aiosqlite>=0.19.0
+
+# HTTP 客户端/服务器
+aiohttp>=3.9.0
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+hypercorn>=0.14.0
+
+# 加密
+pynacl>=1.5.0
+cryptography>=41.0.0
+
+# 配置解析
+pyyaml>=6.0.1
+
+# 数据验证
+pydantic>=2.5.0
+
+# 工具
+python-multipart>=0.0.6
+
+# 可选：Tailscale API 客户端
+# tailscale>=1.0.0
+psutil

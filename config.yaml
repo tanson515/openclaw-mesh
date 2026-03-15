@@ -1,0 +1,10 @@
+# OpenClaw Mesh v0.6.8 config
+node_id: ""
+alias: ""
+tailscale_auth_key: ""
+host: "0.0.0.0"
+port: 8443
+tls_mode: "tailscale"
+data_dir: "./data"
+temp_dir: "./temp"
+allowed_commands: [".*"]
