@@ -18,6 +18,13 @@ import aiohttp
 
 from src.network.message_transport import MessageTransport, Message
 
+# 导入 LLM 客户端
+try:
+    from src.llm.llm_client import LLMClient, LLMClientFactory
+except ImportError:
+    LLMClient = None
+    LLMClientFactory = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,12 +74,23 @@ class DiscussionCoordinator:
         local_agent: Optional[Any] = None,
         max_rounds: int = 5,
         speech_timeout: float = 120.0,
+        llm_config: Optional[dict] = None,
     ):
         self.node_id = node_id
         self.transport = message_transport
         self.local_agent = local_agent
         self.max_rounds = max_rounds
         self.speech_timeout = speech_timeout
+        
+        # 初始化 LLM 客户端
+        self.llm_client = None
+        if LLMClientFactory and llm_config:
+            try:
+                self.llm_client = LLMClientFactory.from_config(llm_config)
+                if self.llm_client:
+                    logger.info(f"[{node_id}] LLM 客户端初始化: {llm_config.get('provider', 'unknown')}")
+            except Exception as e:
+                logger.error(f"[{node_id}] LLM 客户端初始化失败: {e}")
         
         # 简化的数据结构：所有信息合并到一个字典
         self._discs: Dict[str, Dict] = {}
@@ -321,6 +339,39 @@ class DiscussionCoordinator:
 
         logger.info(f"[{self.node_id}] 收到讨论请求: {topic} (第{round_num}轮)")
 
+        # 如果本地没有该讨论记录，创建临时记录
+        if discussion_id not in self._discs:
+            from dataclasses import dataclass, field
+            from datetime import datetime, timezone
+
+            @dataclass
+            class DiscussionInfo:
+                discussion_id: str
+                topic: str
+                context: str
+                coordinator_id: str
+                participants: list
+                user_id: str = ""
+                max_rounds: int = 5
+                speech_timeout: float = 120.0
+                status: str = "active"
+                created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+                ended_at: str = None
+                summary: str = ""
+
+            self._discs[discussion_id] = {
+                "info": DiscussionInfo(
+                    discussion_id=discussion_id,
+                    topic=topic,
+                    context=context,
+                    coordinator_id=message.from_node,
+                    participants=[message.from_node, self.node_id],
+                ),
+                "speeches": [],
+                "round": round_num,
+            }
+            logger.info(f"[{self.node_id}] 创建临时讨论记录: {discussion_id}")
+
         # 调用本地 LLM 生成观点
         content = await self._generate_speech(
             topic=topic,
@@ -339,10 +390,11 @@ class DiscussionCoordinator:
         previous_views: List[Dict],
         round_num: int
     ) -> str:
-        """
-        使用本地 LLM 生成发言内容
-        各节点用自己的 LLM 配置（从环境变量读取）
-        """
+        """使用配置的 LLM 生成发言"""
+        
+        if not self.llm_client:
+            return f"[{self.node_id}] 未配置 LLM，无法生成观点"
+        
         # 构建提示词
         prompt = f"""你是 OpenClaw Mesh 网络中的 Agent {self.node_id}。
 
@@ -353,61 +405,19 @@ class DiscussionCoordinator:
 
         if previous_views:
             prompt += "\n之前的发言:\n"
-            for view in previous_views[-3:]:  # 最近 3 条
-                prompt += f"  [{view['speaker']}]: {view['content'][:150]}...\n"
+            for view in previous_views[-3:]:
+                content = view.get('content', '')[:150]
+                speaker = view.get('speaker', 'unknown')
+                prompt += f"  [{speaker}]: {content}...\n"
 
         prompt += f"""
 请给出你的观点。作为 {self.node_id}，你有独特的视角。
 请简洁回答（100-200字）。
 """
-
-        # 调用 LLM API（使用环境变量配置）
-        try:
-            api_key = os.getenv("KIMI_API_KEY") or os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                return f"[{self.node_id}] 未配置 LLM API Key，请设置 KIMI_API_KEY 或 OPENAI_API_KEY 环境变量"
-
-            # 检测使用哪个提供商
-            if os.getenv("KIMI_API_KEY"):
-                # Kimi API
-                url = "https://api.moonshot.cn/v1/chat/completions"
-                headers = {
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                }
-                data = {
-                    "model": "kimi-k2.5",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.7,
-                    "max_tokens": 300
-                }
-            else:
-                # OpenAI API
-                url = "https://api.openai.com/v1/chat/completions"
-                headers = {
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                }
-                data = {
-                    "model": "gpt-4",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.7,
-                    "max_tokens": 300
-                }
-
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, headers=headers, json=data, timeout=30) as resp:
-                    if resp.status == 200:
-                        result = await resp.json()
-                        return result["choices"][0]["message"]["content"].strip()
-                    else:
-                        error_text = await resp.text()
-                        logger.error(f"LLM API 错误: {resp.status} - {error_text}")
-                        return f"[{self.node_id}] LLM 调用失败: {resp.status}"
-
-        except Exception as e:
-            logger.error(f"生成发言失败: {e}")
-            return f"[{self.node_id}] 生成观点时出错: {str(e)}"
+        
+        # 调用 LLM
+        response = await self.llm_client.generate(prompt)
+        return response
 
     async def _on_discussion_end(self, message: Message) -> None:
         """讨论结束通知"""

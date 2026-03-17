@@ -1,4 +1,4 @@
-# OpenClaw Mesh v0.6.8
+# OpenClaw Mesh v0.7.0
 
 Decentralized P2P network node based on Tailscale + HTTPS + SQLite.
 
@@ -10,6 +10,7 @@ Decentralized P2P network node based on Tailscale + HTTPS + SQLite.
 - File Transfer: P2P chunked transfer, resume support
 - Agent Proxy: Remote command execution, permission control
 - Discussion Coordination: Multi-Agent discussion management
+- **Multi-Model LLM Support**: Each node can use its own LLM (MiniMax, Kimi, OpenAI, Anthropic, Ollama)
 - Adaptive Heartbeat: Dynamic node status management
 - Windows Support: Fully compatible with Windows 10/11
 - macOS/Linux Support: Cross-platform compatible
@@ -19,8 +20,8 @@ Decentralized P2P network node based on Tailscale + HTTPS + SQLite.
 ### Installation
 
 ```bash
-tar -xzf openclaw-mesh-v0.6.8.tar.gz
-cd openclaw-mesh-v0.6.8
+tar -xzf openclaw-mesh-v0.7.0.tar.gz
+cd openclaw-mesh-v0.6.9
 pip install -r requirements.txt
 ```
 
@@ -38,6 +39,18 @@ pip install -r requirements.txt
    host: "0.0.0.0"
    port: 8443
    ```
+
+### LLM Configuration (Optional)
+
+Each node can configure its own LLM for discussion:
+
+```yaml
+llm:
+  provider: "minimax"  # or: kimi, openai, anthropic, ollama
+  minimax:
+    api_key: "your-api-key"
+    model: "MiniMax-M2.5"
+```
 
 ### Run
 

@@ -261,6 +261,8 @@ class MessageTransport:
         if not node:
             raise NodeNotFoundError(f"Node not found: {to_node}")
 
+        logger.info(f"[SEND] 发送消息: type={msg_type}, to={to_node}, node_ip={node.ip}, node_port={node.port}")
+
         # 创建消息
         message = self.create_message(msg_type, to_node, payload, reply_to)
 
@@ -777,8 +779,15 @@ class MessageTransport:
             message.to_node = message.to_node.lower()
             message.from_node = message.from_node.lower()
 
+            # 提取纯 node_id（去除 Tailscale 域名后缀）
+            my_node_id = self.node_id.split('.')[0] if '.' in self.node_id else self.node_id
+            target_node_id = message.to_node.split('.')[0] if '.' in message.to_node else message.to_node
+            
+            logger.info(f"[RECV] 收到消息: type={message.type}, from={message.from_node}, to={message.to_node}, my_node={self.node_id}({my_node_id})")
+
             # 检查是否是发给本节点的
-            if message.to_node != self.node_id and message.to_node != "*":
+            if target_node_id != my_node_id and message.to_node != "*":
+                logger.info(f"[RECV] 消息不匹配，转发: to={message.to_node}, my={self.node_id}")
                 # 转发消息
                 if message.to_node != "*":
                     try:
