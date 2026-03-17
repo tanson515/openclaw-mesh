@@ -1,4 +1,4 @@
-# OpenClaw Mesh v0.7.0
+# OpenClaw Mesh v0.7.1
 
 Decentralized P2P network node based on Tailscale + HTTPS + SQLite.
 

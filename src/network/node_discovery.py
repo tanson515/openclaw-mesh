@@ -130,6 +130,7 @@ class NodeDiscovery:
         self._db_connection = None
         self._initialized = False
         self._init_lock = asyncio.Lock()
+        self._db_lock = asyncio.Lock()  # 数据库操作锁，防止并发锁定
 
         logger.info(f"NodeDiscovery initialized: node_id={node_id}, fanout={fanout}")
 
@@ -151,12 +152,12 @@ class NodeDiscovery:
             if self._initialized:
                 return
             db = await self._get_db()
-            # 节点信息表
+            # 节点信息表（移除 ip 的 UNIQUE 约束，因为同一 IP 可能被不同 node_id 使用）
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS nodes (
                     node_id TEXT PRIMARY KEY,
                     name TEXT,
-                    ip TEXT UNIQUE,
+                    ip TEXT,
                     public_key TEXT,
                     last_seen TIMESTAMP,
                     status TEXT DEFAULT 'offline',
@@ -408,32 +409,33 @@ class NodeDiscovery:
         # 统一转为小写
         node.node_id = node.node_id.lower()
 
-        db = await self._get_db()
-        try:
-            await db.execute("""
-                INSERT INTO nodes (node_id, name, ip, public_key, last_seen, status, version, port)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(node_id) DO UPDATE SET
-                    name = excluded.name,
-                    ip = excluded.ip,
-                    public_key = excluded.public_key,
-                    last_seen = excluded.last_seen,
-                    status = excluded.status,
-                    version = excluded.version,
-                    port = excluded.port
-            """, (
-                node.node_id,
-                node.name,
-                node.ip,
-                node.public_key,
-                node.last_seen.isoformat() if node.last_seen else None,
-                node.status,
-                node.version,
-                node.port,
-            ))
-            await db.commit()
-        except Exception as e:
-            logger.error(f"Failed to upsert node: {e}")
+        async with self._db_lock:
+            db = await self._get_db()
+            try:
+                await db.execute("""
+                    INSERT INTO nodes (node_id, name, ip, public_key, last_seen, status, version, port)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(node_id) DO UPDATE SET
+                        name = excluded.name,
+                        ip = excluded.ip,
+                        public_key = excluded.public_key,
+                        last_seen = excluded.last_seen,
+                        status = excluded.status,
+                        version = excluded.version,
+                        port = excluded.port
+                """, (
+                    node.node_id,
+                    node.name,
+                    node.ip,
+                    node.public_key,
+                    node.last_seen.isoformat() if node.last_seen else None,
+                    node.status,
+                    node.version,
+                    node.port,
+                ))
+                await db.commit()
+            except Exception as e:
+                logger.error(f"Failed to upsert node: {e}")
         logger.debug(f"Node upserted: {node.node_id}")
 
     async def get_node(self, node_id: str) -> Optional[NodeInfo]:
